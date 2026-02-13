@@ -5,7 +5,12 @@
     templates = {
       python = {
         path = ./templates/python;
-        description = "Python dev environment with optional CUDA/NVIDIA support, dual nixpkgs channels, and FHS build shell";
+        description = "Python dev environment with dual nixpkgs channels and FHS build shell";
+      };
+
+      python-cuda = {
+        path = ./templates/python-cuda;
+        description = "Python dev environment with CUDA/NVIDIA GPU support, dual nixpkgs channels, and FHS build shell";
       };
 
       typescript = {

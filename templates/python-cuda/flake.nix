@@ -1,5 +1,5 @@
 {
-  description = "Reproducible Python dev environment";
+  description = "Reproducible Python dev environment with CUDA/NVIDIA GPU support";
 
   # ============================================================
   # INPUTS
@@ -58,9 +58,35 @@
         libxcrypt
       ];
 
+      # CUDA build dependencies (GPU libraries, graphics, multimedia)
+      cudaBuildDeps = pkgs_: with pkgs_; [
+        ffmpeg
+        fmt.dev
+        libGLU
+        libGL
+        xorg.libXi
+        xorg.libXmu
+        freeglut
+        xorg.libXext
+        xorg.libX11
+        xorg.libXv
+        xorg.libXrandr
+        zlib
+        ncurses
+        stdenv.cc
+        binutils
+        wayland
+      ];
+
       # ==========================================================
       # IMPLEMENTATION — you shouldn't need to edit below here
       # ==========================================================
+
+      cudaShellHook = pkgs_: with pkgs_; ''
+        export CMAKE_PREFIX_PATH="${pkgs_.fmt.dev}:$CMAKE_PREFIX_PATH"
+        export PKG_CONFIG_PATH="${pkgs_.fmt.dev}/lib/pkgconfig:$PKG_CONFIG_PATH"
+        export EXTRA_CCFLAGS="-I/usr/include"
+      '';
 
       mkEnvFromChannel = (nixpkgs-channel:
         flake-utils.lib.eachDefaultSystem (system:
@@ -72,6 +98,8 @@
             pkgs = import nixpkgs-channel {
               inherit system;
               config.allowUnfree = true;
+              config.cudaSupport = true;
+              config.cudaVersion = "13";
             };
 
             # ----------------------------------------------------------
@@ -90,9 +118,11 @@
             # ----------------------------------------------------------
 
             devShell = pkgs.mkShell {
-              name = "python-dev"; # <-- Rename to your project
+              name = "python-cuda-dev"; # <-- Rename to your project
 
-              buildInputs = (nativeBuildDeps pkgs);
+              buildInputs =
+                (nativeBuildDeps pkgs)
+                ++ (cudaBuildDeps pkgs);
 
               packages = [ pythonWrapper ] ++ (cliTools pkgs);
 
@@ -105,6 +135,8 @@
                   export LD_LIBRARY_PATH="$NIX_LD_LIBRARY_PATH:$LD_LIBRARY_PATH"
                   export TK_LIBRARY="${tk}/lib/${tk.libPrefix}"
                   export TCL_LIBRARY="${tcl}/lib/${tcl.libPrefix}"
+
+                  ${cudaShellHook pkgs}
 
                   if [[ -d .venv ]]; then
                     VENV_PYTHON="$(readlink -f ./.venv/bin/python)"
@@ -122,7 +154,7 @@
             # ----------------------------------------------------------
 
             fhsEnv = (pkgs.buildFHSEnv {
-              name = "python-fhs-dev"; # <-- Rename to your project
+              name = "python-cuda-fhs-dev"; # <-- Rename to your project
 
               targetPkgs = (fhs-pkgs:
                 let
@@ -131,6 +163,7 @@
                 [ fhsPython fhs-pkgs.git ]
                 ++ (cliTools fhs-pkgs)
                 ++ (nativeBuildDeps fhs-pkgs)
+                ++ (cudaBuildDeps fhs-pkgs)
               );
 
               multiPkgs = fhs-pkgs: with fhs-pkgs; [
@@ -138,8 +171,11 @@
                 libxcrypt-legacy
               ];
 
+              # profile uses the outer pkgs — same package set as fhs-pkgs.
               profile = ''
                 export LD_LIBRARY_PATH="$NIX_LD_LIBRARY_PATH:$LD_LIBRARY_PATH"
+                export EXTRA_CCFLAGS="-I/usr/include"
+                ${cudaShellHook pkgs}
               '';
 
               allowSubstitutes = false;
