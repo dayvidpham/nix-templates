@@ -187,6 +187,8 @@
                 libxcrypt-legacy
               ];
 
+              # profile is a string attr (not a function), so we use the outer
+              # pkgs for f-nvidia-shellHook — same package set as fhs-pkgs.
               profile = ''
                 export LD_LIBRARY_PATH="$NIX_LD_LIBRARY_PATH:$LD_LIBRARY_PATH"
                 ${if enableCuda then ''

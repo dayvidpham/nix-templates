@@ -84,6 +84,10 @@
                 fhs-pkgs.pnpm
                 fhs-pkgs.git
 
+                # TypeScript tooling
+                fhs-pkgs.nodePackages.typescript-language-server
+                fhs-pkgs.nodePackages.typescript
+
                 # Common native build deps
                 fhs-pkgs.stdenv.cc.cc.lib
                 fhs-pkgs.zlib
