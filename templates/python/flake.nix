@@ -25,10 +25,45 @@
     , ...
     }:
     let
-      # ----------------------------------------------------------
-      # Toggle: set to false to disable CUDA/NVIDIA dependencies
-      # ----------------------------------------------------------
+      # ==========================================================
+      # PROJECT CONFIGURATION — edit this section for your project
+      # ==========================================================
+
+      # Set to true to enable CUDA/NVIDIA GPU support
       enableCuda = false;
+
+      # Python version (nixpkgs attribute name)
+      pythonAttr = "python313";
+
+      # Python packages available via `import` in the interpreter
+      pythonPackages = ps: with ps; [
+        pip
+        virtualenv
+        tkinter
+        # Add your packages here: numpy, pandas, requests, etc.
+      ];
+
+      # CLI tools available in $PATH
+      cliTools = pkgs_: [
+        pkgs_.uv                                    # Package installer
+        pkgs_.mypy                                  # Type checker
+        pkgs_.${pythonAttr + "Packages"}.ruff       # Linter/formatter
+      ];
+
+      # Native build dependencies (C libraries, compilers)
+      nativeBuildDeps = pkgs_: with pkgs_; [
+        zlib
+        glibc
+        stdenv.cc.cc.lib
+        gcc
+        tk
+        tcl
+        libxcrypt
+      ];
+
+      # ==========================================================
+      # IMPLEMENTATION — you shouldn't need to edit below here
+      # ==========================================================
 
       mkEnvFromChannel = (nixpkgs-channel:
         flake-utils.lib.eachDefaultSystem (system:
@@ -46,54 +81,21 @@
             } else { }));
 
             # ----------------------------------------------------------
-            # Python Configuration
+            # Python Environment
             # ----------------------------------------------------------
 
-            python3-pkgName = "python313";
+            pythonWithPkgs = pkgs.${pythonAttr}.withPackages pythonPackages;
 
-            f-python3-devPkgs = (python-pkgs: with python-pkgs; [
-              pip
-              virtualenv
-              tkinter
-            ]);
-
-            f-python3-prodPkgs = (python-pkgs: with python-pkgs; [
-              # Add your project's Python dependencies here
-            ]);
-
-            python3-with-pkgs = pkgs.${python3-pkgName}.withPackages (ps:
-              (f-python3-devPkgs ps)
-              ++ (f-python3-prodPkgs ps)
-            );
-
-            python3-pkgs = pkgs."${python3-pkgName}Packages";
-
-            f-python3Env = (pkgs_:
-              pkgs_.${python3-pkgName}.withPackages (ps:
-                (f-python3-devPkgs ps)
-                ++ (f-python3-prodPkgs ps)
-              ));
-
-            f-python3-buildInputs = (pkgs_: with pkgs_; [
-              zlib
-              glibc
-              stdenv.cc.cc.lib
-              gcc
-              tk
-              tcl
-              libxcrypt
-            ]);
-
-            python3Wrapper = pkgs.writeShellScriptBin "python3" ''
+            pythonWrapper = pkgs.writeShellScriptBin "python3" ''
               export LD_LIBRARY_PATH=$NIX_LD_LIBRARY_PATH
-              exec ${python3-with-pkgs}/bin/python3 "$@"
+              exec ${pythonWithPkgs}/bin/python3 "$@"
             '';
 
             # ----------------------------------------------------------
-            # Graphics / NVIDIA Configuration (conditional on enableCuda)
+            # NVIDIA/CUDA Configuration (conditional on enableCuda)
             # ----------------------------------------------------------
 
-            f-nvidia-buildInputs = (pkgs_: with pkgs_; [
+            nvidiaBuildInputs = pkgs_: with pkgs_; [
               ffmpeg
               fmt.dev
               libGLU
@@ -110,13 +112,13 @@
               stdenv.cc
               binutils
               wayland
-            ]);
+            ];
 
-            f-nvidia-shellHook = (pkgs_: with pkgs_; ''
+            nvidiaShellHook = pkgs_: with pkgs_; ''
               export CMAKE_PREFIX_PATH="${pkgs_.fmt.dev}:$CMAKE_PREFIX_PATH"
               export PKG_CONFIG_PATH="${pkgs_.fmt.dev}/lib/pkgconfig:$PKG_CONFIG_PATH"
               export EXTRA_CCFLAGS="-I/usr/include"
-            '');
+            '';
 
             # ----------------------------------------------------------
             # Development Shell
@@ -126,15 +128,10 @@
               name = "python-dev"; # <-- Rename to your project
 
               buildInputs =
-                (f-python3-buildInputs pkgs)
-                ++ (if enableCuda then (f-nvidia-buildInputs pkgs) else [ ]);
+                (nativeBuildDeps pkgs)
+                ++ (if enableCuda then (nvidiaBuildInputs pkgs) else [ ]);
 
-              packages = [
-                python3Wrapper
-                pkgs.uv
-                pkgs.mypy
-                python3-pkgs.ruff
-              ];
+              packages = [ pythonWrapper ] ++ (cliTools pkgs);
 
               shellHook =
                 let
@@ -146,7 +143,7 @@
                   export TK_LIBRARY="${tk}/lib/${tk.libPrefix}"
                   export TCL_LIBRARY="${tcl}/lib/${tcl.libPrefix}"
 
-                  ${if enableCuda then (f-nvidia-shellHook pkgs) else ""}
+                  ${if enableCuda then (nvidiaShellHook pkgs) else ""}
 
                   if [[ -d .venv ]]; then
                     VENV_PYTHON="$(readlink -f ./.venv/bin/python)"
@@ -168,18 +165,12 @@
 
               targetPkgs = (fhs-pkgs:
                 let
-                  fhs-python3-with-pkgs = f-python3Env fhs-pkgs;
-                  fhs-python3-pkgs = fhs-python3-with-pkgs.pkgs;
+                  fhsPython = fhs-pkgs.${pythonAttr}.withPackages pythonPackages;
                 in
-                [
-                  fhs-pkgs.${python3-pkgName}
-                  fhs-pkgs.uv
-                  fhs-pkgs.mypy
-                  fhs-pkgs.git
-                  fhs-python3-pkgs.ruff
-                ]
-                ++ (f-python3-buildInputs fhs-pkgs)
-                ++ (if enableCuda then (f-nvidia-buildInputs fhs-pkgs) else [ ])
+                [ fhsPython fhs-pkgs.git ]
+                ++ (cliTools fhs-pkgs)
+                ++ (nativeBuildDeps fhs-pkgs)
+                ++ (if enableCuda then (nvidiaBuildInputs fhs-pkgs) else [ ])
               );
 
               multiPkgs = fhs-pkgs: with fhs-pkgs; [
@@ -188,12 +179,12 @@
               ];
 
               # profile is a string attr (not a function), so we use the outer
-              # pkgs for f-nvidia-shellHook — same package set as fhs-pkgs.
+              # pkgs for nvidiaShellHook — same package set as fhs-pkgs.
               profile = ''
                 export LD_LIBRARY_PATH="$NIX_LD_LIBRARY_PATH:$LD_LIBRARY_PATH"
                 ${if enableCuda then ''
                   export EXTRA_CCFLAGS="-I/usr/include"
-                  ${f-nvidia-shellHook pkgs}
+                  ${nvidiaShellHook pkgs}
                 '' else ""}
               '';
 
