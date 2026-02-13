@@ -109,7 +109,6 @@
               ncurses
               stdenv.cc
               binutils
-              uv
               wayland
             ]);
 
