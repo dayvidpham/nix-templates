@@ -2,9 +2,9 @@
   description = "Minimal Nix flake template to provision a template for environments scoped to one language";
 
   inputs = {
-    nixpkgs-stable.url = "https://github.com/NixOS/nixpkgs/nixos-26.05";
-    nixpkgs-unstable.url = "https://github.com/NixOS/nixpkgs/nixos-unstable";
-    flake-utils.url = "https://github.com/numtide/flake-utils";
+    nixpkgs-stable.url = "github:NixOS/nixpkgs/nixos-26.05";
+    nixpkgs-unstable.url = "github:NixOS/nixpkgs/nixos-unstable";
+    flake-utils.url = "github:numtide/flake-utils";
   };
 
   outputs =
